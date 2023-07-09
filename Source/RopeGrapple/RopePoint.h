@@ -15,7 +15,6 @@ class ROPEGRAPPLE_API URopePoint : public UActorComponent
 public:	
 	URopePoint();
 	void UpdatePoint(float deltaTime);
-	void DrawPoint();
 	void ApplyForce(FVector force, float deltaTime);
 
 	UPROPERTY(EditAnywhere, Category = "Grapple Options")
@@ -30,6 +29,8 @@ public:
 		FVector position;
 	UPROPERTY(EditAnywhere, Category = "Grapple Options")
 		FVector previousPosition;
+
+	int collisionsResolved = 0;
 
 protected:	
 	FVector velocity;

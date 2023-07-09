@@ -124,7 +124,7 @@ void ARopeGrappleCharacter::Move(const FInputActionValue& value)
 		else if (anchored) { //project movement into allowed radius
 			FVector destination = grappleGun1->GetRopeOrigin() + GetActorForwardVector() * movementVector.Y + GetActorRightVector() * movementVector.X;
 			FVector distance = anchorPoint - destination;
-			if (distance.Length() >= grappleGun1->GetRopeLength()) {
+			if (distance.Length() >= grappleGun1->GetRopeLength() / 1.05) {
 				FVector correctedDistance = distance;
 				correctedDistance.Normalize();
 				correctedDistance *= grappleGun1->GetRopeLength();

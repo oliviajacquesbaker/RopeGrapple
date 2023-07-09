@@ -34,7 +34,9 @@ void ARope::Tick(float DeltaTime)
 		grappleSource->RestrainOwningCharacter(ropePoints[0], ropePoints[ropePoints.Num() - 1], currentRopeLength);
 	}
 
-	RestrainPoints();
+	RestrainPoints(constraintIterations / 3);
+	ProjectPoints();
+	RestrainPoints(2 * constraintIterations / 3);
 	GenerateLine();
 }
 
@@ -80,9 +82,9 @@ void ARope::GeneratePoints(FVector startLocation, FVector endLocation)
 	ropeLength *= initialGiveMultiplier;
 }
 
-void ARope::RestrainPoints()
+void ARope::RestrainPoints(int iters)
 {
-	for (int iterations = 0; iterations < constraintIterations; ++iterations) {
+	for (int iterations = 0; iterations < iters; ++iterations) {
 		//the point we're holding is always located at the tip of the grapple gun
 		ropePoints[0]->position = grappleSource->GetRopeOrigin();
 
@@ -97,6 +99,31 @@ void ARope::RestrainPoints()
 		Constrain(transitionaryOutIndex, transitionaryInIndex, transitionaryInDistance);
 		if(transitionaryOutIndex < ropePoints.Num() - 1) Constrain(transitionaryOutIndex + 1, transitionaryOutIndex, transitionaryOutDistance);
 	}	
+}
+
+void ARope::ProjectPoints()
+{
+	for (int i = 1; i < transitionaryInIndex - 1; ++i) {
+		FHitResult outHit;
+		UKismetSystemLibrary::SphereTraceSingle(GetWorld(), ropePoints[i]->position + (FVector::UpVector * correctionTraceLength), ropePoints[i]->position, ropePoints[i]->radius, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, { this }, EDrawDebugTrace::None, outHit, true, FLinearColor::Red, FLinearColor::Green, 0);
+		
+		if (outHit.bBlockingHit && outHit.ImpactNormal.Z >= majorityInfluence) ProjectPoint(i, outHit.ImpactPoint);
+		else if (outHit.bBlockingHit) {
+			UKismetSystemLibrary::SphereTraceSingle(GetWorld(), ropePoints[i]->position + (outHit.ImpactNormal * correctionTraceLength), ropePoints[i]->position, ropePoints[i]->radius, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, { this }, EDrawDebugTrace::ForDuration, outHit, true, FLinearColor::Red, FLinearColor::Green, 0);
+			ProjectPoint(i, outHit.ImpactPoint, false);
+		}
+	}
+}
+
+void ARope::ProjectPoint(int ind, FVector impactPoint, bool groundCollision)
+{
+	float correctionWeight = (groundCollision) ? 0.9 : 0.7;
+	FVector correctedPrevPos = ropePoints[ind]->previousPosition + (impactPoint - ropePoints[ind]->previousPosition) * correctionWeight;
+	ropePoints[ind]->previousPosition = FVector(correctedPrevPos.X, correctedPrevPos.Y, ropePoints[ind]->previousPosition.Z);
+	ropePoints[ind]->position = impactPoint;
+	if (!groundCollision) ropePoints[ind]->position.Z = ropePoints[ind]->previousPosition.Z;
+
+	ropePoints[ind]->collisionsResolved += 2;
 }
 
 void ARope::Constrain(int indA, int indB, float constraintDist)
@@ -137,7 +164,7 @@ void ARope::RestrainAnchoredObject()
 		correctedDistance *= GetLength() * initialGiveMultiplier;
 
 		//negotiate the physics calculated position with our corrections
-		bool playerAboveObject = ropePoints[0]->position.Z - ropePoints[ropePoints.Num() - 1]->position.Z >= GetLength() * 0.8;
+		bool playerAboveObject = ropePoints[0]->position.Z - ropePoints[ropePoints.Num() - 1]->position.Z >= GetLength() * majorityInfluence;
 		float correctionWeight = (playerAboveObject) ? 0.07 : 0.05;
 		float zPos = (!playerAboveObject) ? anchorObjectPosition.Z + (correctedDistance.Z - anchorObjectPosition.Z) * correctionWeight :
 			ropePoints[0]->position.Z + correctedDistance.Z + (anchorObjectPosition.Z - ropePoints[0]->position.Z) * correctionWeight;
@@ -154,11 +181,11 @@ void ARope::RestrainAnchoredObject()
 			FVector end = anchorObjectPosition - FVector::UpVector * boxExtents.GetAbsMax();
 
 			FHitResult hitActor;
-			UKismetSystemLibrary::BoxTraceSingle(GetWorld(), start, end, boxExtents, anchorObject->GetActorRotation(), UEngineTypes::ConvertToTraceType(ECollisionChannel::ECC_Visibility), false, { anchorObject }, EDrawDebugTrace::None, hitActor, true, FLinearColor::Red, FLinearColor::Green, 20.0f);
+			UKismetSystemLibrary::BoxTraceSingle(GetWorld(), start, end, boxExtents, anchorObject->GetActorRotation(), UEngineTypes::ConvertToTraceType(ECollisionChannel::ECC_Visibility), false, { anchorObject }, EDrawDebugTrace::ForDuration, hitActor, true, FLinearColor::Red, FLinearColor::Green, 0.2f);
 
 			//only project out of the collision if the normal is reasonable (not a vertical wall)
 			bool notRandomlyUp = (hitActor.Location.Z - previousAnchorObjectPosition.Z < 50) || playerAboveObject;
-			if (hitActor.bBlockingHit && notRandomlyUp && FMath::Abs(hitActor.ImpactNormal.X) < 0.4 && FMath::Abs(hitActor.ImpactNormal.Y) < 0.4) {
+			if (hitActor.bBlockingHit && notRandomlyUp && FMath::Abs(hitActor.ImpactNormal.X) < minorityInfluence && FMath::Abs(hitActor.ImpactNormal.Y) < minorityInfluence) {
 				anchorObject->SetActorLocation(hitActor.Location, false);
 
 				FRotator normalDiff = UKismetMathLibrary::FindLookAtRotation(hitActor.ImpactNormal, anchorObject->GetActorUpVector());

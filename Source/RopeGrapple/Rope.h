@@ -6,6 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "RopePoint.h"
 #include "DrawDebugHelpers.h"
+#include "Kismet/KismetSystemLibrary.h"
 #include "Components/LineBatchComponent.h"
 #include "Rope.generated.h"
 
@@ -34,7 +35,9 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
-	void RestrainPoints();
+	void RestrainPoints(int iterations);
+	void ProjectPoints();
+	void ProjectPoint(int ind, FVector impactPoint, bool zCorrectionAllowed = true);
 	void Constrain(int indA, int indB, float constraintDist);
 	void SimulateAnchoredObject(float DeltaTime);
 	void RestrainAnchoredObject();
@@ -64,6 +67,9 @@ protected:
 	float transitionaryOutDistance = 0.1f;
 	float transitionaryInDistance = 0.0f;
 	float errorAcceptance = 0.01f;
+	float correctionTraceLength = 200.0f;
+	float majorityInfluence = 0.75f;
+	float minorityInfluence = 0.4f;
 
 	FVector anchorObjectPosition;
 	FVector previousAnchorObjectPosition;

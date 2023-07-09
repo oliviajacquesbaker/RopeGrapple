@@ -13,14 +13,13 @@ void URopePoint::UpdatePoint(float deltaTime)
 	if (!isAnchor) ApplyForce(gravitationalAcceleration * mass, deltaTime);
 }
 
-void URopePoint::DrawPoint()
-{
-	DrawDebugSphere(GetWorld(), position, radius, 16, FColor::Blue, false, 0);
-}
-
 void URopePoint::ApplyForce(FVector force, float deltaTime)
 {
 	velocity = position - previousPosition;
+	if (collisionsResolved > 0 && velocity.Length() > 3) {
+		velocity = velocity.GetSafeNormal() * 3; 
+		--collisionsResolved;
+	}
 	previousPosition = position;
 	position += velocity + (force / mass) * (deltaTime * deltaTime);
 }
