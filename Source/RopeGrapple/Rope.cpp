@@ -105,11 +105,15 @@ void ARope::ProjectPoints()
 {
 	for (int i = 1; i < transitionaryInIndex - 1; ++i) {
 		FHitResult outHit;
-		UKismetSystemLibrary::SphereTraceSingle(GetWorld(), ropePoints[i]->position + (FVector::UpVector * correctionTraceLength), ropePoints[i]->position, ropePoints[i]->radius, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, { this }, EDrawDebugTrace::None, outHit, true, FLinearColor::Red, FLinearColor::Green, 0);
+		UKismetSystemLibrary::SphereTraceSingle(GetWorld(), ropePoints[i]->position + (FVector::UpVector * correctionTraceLength), 
+			ropePoints[i]->position, ropePoints[i]->radius, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, { this }, 
+			EDrawDebugTrace::None, outHit, true, FLinearColor::Red, FLinearColor::Green, 0);
 		
 		if (outHit.bBlockingHit && outHit.ImpactNormal.Z >= majorityInfluence) ProjectPoint(i, outHit.ImpactPoint);
 		else if (outHit.bBlockingHit) {
-			UKismetSystemLibrary::SphereTraceSingle(GetWorld(), ropePoints[i]->position + (outHit.ImpactNormal * correctionTraceLength), ropePoints[i]->position, ropePoints[i]->radius, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, { this }, EDrawDebugTrace::ForDuration, outHit, true, FLinearColor::Red, FLinearColor::Green, 0);
+			UKismetSystemLibrary::SphereTraceSingle(GetWorld(), ropePoints[i]->position + (outHit.ImpactNormal * correctionTraceLength), 
+				ropePoints[i]->position, ropePoints[i]->radius, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, { this }, 
+				EDrawDebugTrace::ForDuration, outHit, true, FLinearColor::Red, FLinearColor::Green, 0);
 			ProjectPoint(i, outHit.ImpactPoint, false);
 		}
 	}
