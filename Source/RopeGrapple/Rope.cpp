@@ -7,7 +7,8 @@
 ARope::ARope()
 {
 	PrimaryActorTick.bCanEverTick = true;
-	lineRenderer = CreateDefaultSubobject<ULineBatchComponent>(TEXT("Line Renderer"));
+	splineComponent = CreateDefaultSubobject<USplineComponent>("Spline");
+	splineComponent->bDrawDebug = true;
 }
 
 void ARope::BeginPlay()
@@ -24,12 +25,12 @@ void ARope::Tick(float DeltaTime)
 		ropePoints[i]->UpdatePoint(DeltaTime);
 	}
 
-	float currentRopeLength = ropeLength + transitionaryOutDistance - (realDistanceBetweenPoints - transitionaryInDistance);
 	if (anchorIsMovable) {
 		SimulateAnchoredObject(DeltaTime);
 		RestrainAnchoredObject();
 	}
 	else {
+		float currentRopeLength = ropeLength + transitionaryOutDistance - (realDistanceBetweenPoints - transitionaryInDistance);
 		grappleSource->SimulateOwningCharacter(DeltaTime);
 		grappleSource->RestrainOwningCharacter(ropePoints[0], ropePoints[ropePoints.Num() - 1], currentRopeLength);
 	}
@@ -79,6 +80,13 @@ void ARope::GeneratePoints(FVector startLocation, FVector endLocation)
 	if(!anchorIsMovable) ropePoints[ropePoints.Num() - 1]->isAnchor = true;
 	anchorObjectImpactOffset = anchorObject->GetActorLocation() - ropePoints[ropePoints.Num() - 1]->position;
 
+	//initialize visual spline
+	splineComponent->ClearSplinePoints();
+	for (int i = 0; i < ropePoints.Num(); ++i) {
+		splineComponent->AddPoint({ (float)i, ropePoints[i]->position });
+		ropeMeshes.Add(CreateSplineMesh());
+	}
+
 	ropeLength *= initialGiveMultiplier;
 }
 
@@ -103,19 +111,30 @@ void ARope::RestrainPoints(int iters)
 
 void ARope::ProjectPoints()
 {
+	FVector previousNormal = FVector::ZeroVector;
 	for (int i = 1; i < transitionaryInIndex - 1; ++i) {
 		FHitResult outHit;
 		UKismetSystemLibrary::SphereTraceSingle(GetWorld(), ropePoints[i]->position + (FVector::UpVector * correctionTraceLength), 
 			ropePoints[i]->position, ropePoints[i]->radius, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, { this }, 
 			EDrawDebugTrace::None, outHit, true, FLinearColor::Red, FLinearColor::Green, 0);
 		
-		if (outHit.bBlockingHit && outHit.ImpactNormal.Z >= majorityInfluence) ProjectPoint(i, outHit.ImpactPoint);
+		if (outHit.bBlockingHit && outHit.ImpactNormal.Z >= majorityInfluence) {
+			ProjectPoint(i, outHit.ImpactPoint);
+			previousNormal = FVector::ZeroVector;
+		}
 		else if (outHit.bBlockingHit) {
 			UKismetSystemLibrary::SphereTraceSingle(GetWorld(), ropePoints[i]->position + (outHit.ImpactNormal * correctionTraceLength), 
 				ropePoints[i]->position, ropePoints[i]->radius, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, { this }, 
-				EDrawDebugTrace::ForDuration, outHit, true, FLinearColor::Red, FLinearColor::Green, 0);
+				EDrawDebugTrace::None, outHit, true, FLinearColor::Red, FLinearColor::Green, 0);
+
 			ProjectPoint(i, outHit.ImpactPoint, false);
+			float angle = FMath::RadiansToDegrees(acosf(FVector::DotProduct(outHit.ImpactNormal, previousNormal)));
+			if (previousNormal != FVector::ZeroVector && angle > 60) {
+				HandleCorner(i - 1, i, previousNormal, outHit.ImpactNormal);
+			}
+			previousNormal = outHit.ImpactNormal;
 		}
+		else previousNormal = FVector::ZeroVector;
 	}
 }
 
@@ -130,6 +149,34 @@ void ARope::ProjectPoint(int ind, FVector impactPoint, bool groundCollision)
 	ropePoints[ind]->collisionsResolved += 2;
 }
 
+void ARope::HandleCorner(int indA, int indB, FVector aImpactNormal, FVector bImpactNormal)
+{
+	FVector current = ropePoints[indB]->position;
+	FVector adjust = FVector(ropePoints[indA]->position.X - ropePoints[indB]->position.X, ropePoints[indA]->position.Y - ropePoints[indB]->position.Y, 0).GetSafeNormal();
+
+	FVector goal = current + adjust * realDistanceBetweenPoints * 5;
+	adjust *= 10.0f;
+
+	FHitResult outHit;
+	FVector lastHit;
+	for (int i = 0; i < 40; ++i) {
+		UKismetSystemLibrary::SphereTraceSingle(GetWorld(), current + (bImpactNormal * correctionTraceLength),
+			current, 10, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, { this },
+			EDrawDebugTrace::None, outHit, true, FLinearColor::Red, FLinearColor::Green, 5);
+
+		if (outHit.bBlockingHit) lastHit = outHit.ImpactPoint;
+		else {
+			DrawDebugSphere(GetWorld(), lastHit, 5, 8, FColor(181, 0, 200), false, 5, 2, 1);
+			int modifiedInd = (FVector::Distance(lastHit, ropePoints[indA]->position) < FVector::Distance(lastHit, ropePoints[indB]->position)) ? indA : indB;
+			ropePoints[modifiedInd]->position = lastHit;
+			ropePoints[modifiedInd]->cornerFlag = true;
+			break;
+		}
+
+		current += adjust;
+	}	
+}
+
 void ARope::Constrain(int indA, int indB, float constraintDist)
 {
 	float distance, percent;
@@ -141,8 +188,8 @@ void ARope::Constrain(int indA, int indB, float constraintDist)
 	percent = FMath::Clamp(percent, 0, 1);
 
 	difference *= percent;
-	if (ropePoints[indB]->isAnchor) ropePoints[indA]->position = ropePoints[indA]->position - difference;
-	else if (ropePoints[indA]->isAnchor) ropePoints[indB]->position = ropePoints[indB]->position + difference;
+	if (ropePoints[indB]->isAnchor || ropePoints[indB]->cornerFlag) ropePoints[indA]->position = ropePoints[indA]->position - difference;
+	else if (ropePoints[indA]->isAnchor || ropePoints[indA]->cornerFlag) ropePoints[indB]->position = ropePoints[indB]->position + difference;
 	else {
 		difference /= 2;
 		ropePoints[indB]->position = ropePoints[indB]->position + difference;
@@ -161,7 +208,7 @@ void ARope::RestrainAnchoredObject()
 {
 	//we only force movement if the rope is taut / actively pulling the object
 	FVector distance = anchorObjectPosition - ropePoints[0]->position;
-	if (distance.Length() >= GetLength() * initialGiveMultiplier) {
+	if (GreaterThanRopeLength(distance)) {
 		//calculate a position projected into the allowed radius
 		FVector correctedDistance = distance;
 		correctedDistance.Normalize();
@@ -185,7 +232,7 @@ void ARope::RestrainAnchoredObject()
 			FVector end = anchorObjectPosition - FVector::UpVector * boxExtents.GetAbsMax();
 
 			FHitResult hitActor;
-			UKismetSystemLibrary::BoxTraceSingle(GetWorld(), start, end, boxExtents, anchorObject->GetActorRotation(), UEngineTypes::ConvertToTraceType(ECollisionChannel::ECC_Visibility), false, { anchorObject }, EDrawDebugTrace::ForDuration, hitActor, true, FLinearColor::Red, FLinearColor::Green, 0.2f);
+			UKismetSystemLibrary::BoxTraceSingle(GetWorld(), start, end, boxExtents, anchorObject->GetActorRotation(), UEngineTypes::ConvertToTraceType(ECollisionChannel::ECC_Visibility), false, { anchorObject }, EDrawDebugTrace::None, hitActor, true, FLinearColor::Red, FLinearColor::Green, 0.2f);
 
 			//only project out of the collision if the normal is reasonable (not a vertical wall)
 			bool notRandomlyUp = (hitActor.Location.Z - previousAnchorObjectPosition.Z < 50) || playerAboveObject;
@@ -214,18 +261,40 @@ void ARope::RestrainAnchoredObject()
 	ropePoints[ropePoints.Num() - 1]->position = anchorObject->GetActorLocation();
 }
 
+USplineMeshComponent* ARope::CreateSplineMesh()
+{
+	USplineMeshComponent* splineMesh = NewObject<USplineMeshComponent>(this, USplineMeshComponent::StaticClass());
+	splineMesh->SetStaticMesh(mesh);
+	splineMesh->SetForwardAxis(ESplineMeshAxis::Z, true);
+	splineMesh->RegisterComponentWithWorld(GetWorld());
+	splineMesh->SetMobility(EComponentMobility::Movable);
+	splineMesh->AttachToComponent(splineComponent, FAttachmentTransformRules::KeepRelativeTransform);
+	return splineMesh;
+}
+
 void ARope::GenerateLine()
 {
-	TArray<FBatchedLine> ropeSegments;
 	FColor color; float adjust;
 	for (int i = 0; i < ropePoints.Num(); ++i) {
 		color = (i == transitionaryOutIndex) ? FColor::Red : (i == transitionaryInIndex) ? FColor::Yellow : FColor::Blue;
+		if ((ropePoints[i]->cornerFlag)) color = FColor::Purple;
 		adjust = (i == transitionaryOutIndex) ? 0.75f : 1.0f;
-		//DrawDebugSphere(GetWorld(), ropePoints[i]->position, ropePoints[i]->radius * adjust, 16, color, false, 0);
-		if (i > 0) ropeSegments.Emplace(ropePoints[i - 1]->position, ropePoints[i]->position, FLinearColor::Black, 0.02, 5, 0);
+		DrawDebugSphere(GetWorld(), ropePoints[i]->position, ropePoints[i]->radius * adjust, 16, color, false, 0);
 	}
 
-	lineRenderer->DrawLines(ropeSegments);
+	for (int i = 0; i < ropePoints.Num(); ++i) {
+		splineComponent->SetLocationAtSplinePoint(i, ropePoints[i]->position, ESplineCoordinateSpace::World);
+	}
+
+	for (int i = 0; i < ropePoints.Num() - 1; ++i) {
+		// define the positions of the points and tangents
+		FVector StartPoint = splineComponent->GetLocationAtSplinePoint(i, ESplineCoordinateSpace::Type::Local);
+		FVector StartTangent = splineComponent->GetTangentAtSplinePoint(i, ESplineCoordinateSpace::Type::Local);
+		FVector EndPoint = splineComponent->GetLocationAtSplinePoint(i + 1, ESplineCoordinateSpace::Type::Local);
+		FVector EndTangent = splineComponent->GetTangentAtSplinePoint(i + 1, ESplineCoordinateSpace::Type::Local);
+		if (i == 0) StartPoint = grappleSource->GetRopeOrigin();
+		ropeMeshes[i]->SetStartAndEnd(StartPoint, StartTangent, EndPoint, EndTangent, true);
+	}
 }
 
 void ARope::Shorten(float rateOfChange)
@@ -237,6 +306,10 @@ void ARope::Shorten(float rateOfChange)
 
 	if (transitionaryInDistance <= 0) {
 		ropePoints.RemoveAt(transitionaryInIndex);
+		ropeMeshes[transitionaryInIndex]->DestroyComponent();
+		ropeMeshes.RemoveAt(transitionaryInIndex);
+		splineComponent->RemoveSplinePoint(transitionaryInIndex);
+
 		--transitionaryInIndex;
 		--transitionaryOutIndex;
 
@@ -258,6 +331,9 @@ void ARope::Extend(float rateOfChange)
 		ropePoints[transitionaryOutIndex]->RegisterComponent();
 		ropePoints[transitionaryOutIndex]->position = ropePoints[transitionaryOutIndex + 1]->position;
 		ropePoints[transitionaryOutIndex]->previousPosition = ropePoints[transitionaryOutIndex + 1]->position;
+
+		splineComponent->AddSplinePointAtIndex(ropePoints[transitionaryOutIndex + 1]->position, transitionaryOutIndex, ESplineCoordinateSpace::World);
+		ropeMeshes.EmplaceAt(transitionaryOutIndex, CreateSplineMesh());	
 
 		transitionaryOutDistance = 0.0f;
 		ropeLength += realDistanceBetweenPoints;

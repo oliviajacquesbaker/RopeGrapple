@@ -31,6 +31,7 @@ public:
 		FVector previousPosition;
 
 	int collisionsResolved = 0;
+	bool cornerFlag = false;
 
 protected:	
 	FVector velocity;

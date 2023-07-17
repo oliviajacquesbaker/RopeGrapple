@@ -11,6 +11,7 @@ URopePoint::URopePoint()
 void URopePoint::UpdatePoint(float deltaTime)
 {
 	if (!isAnchor) ApplyForce(gravitationalAcceleration * mass, deltaTime);
+	cornerFlag = false;
 }
 
 void URopePoint::ApplyForce(FVector force, float deltaTime)

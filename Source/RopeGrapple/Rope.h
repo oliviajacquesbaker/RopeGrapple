@@ -8,6 +8,8 @@
 #include "DrawDebugHelpers.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Components/LineBatchComponent.h"
+#include "Components/SplineComponent.h"
+#include "Components/SplineMeshComponent.h"
 #include "Rope.generated.h"
 
 UCLASS()
@@ -32,15 +34,20 @@ public:
 	void SetAnchorNormal(FVector normal) { anchorNormal = normal; };
 	FVector GetAnchorNormal() { return anchorNormal; };
 	bool IsAnchorMovable() { return anchorIsMovable; };
+	bool GreaterThanRopeLength(FVector comparisonVector) { ropeTempLength = GetLength() * initialGiveMultiplier; return comparisonVector.SquaredLength() >= ropeTempLength * ropeTempLength; };
+	void SetMeshAndMaterial(UStaticMesh* mesh_, UMaterialInterface* material_) { mesh = mesh_; defaultMaterial = material_; };
+
 
 protected:
 	virtual void BeginPlay() override;
 	void RestrainPoints(int iterations);
 	void ProjectPoints();
 	void ProjectPoint(int ind, FVector impactPoint, bool zCorrectionAllowed = true);
+	void HandleCorner(int indA, int indB, FVector aImpactNormal, FVector bImpactNormal);
 	void Constrain(int indA, int indB, float constraintDist);
 	void SimulateAnchoredObject(float DeltaTime);
 	void RestrainAnchoredObject();
+	USplineMeshComponent* CreateSplineMesh();
 
 	UPROPERTY(VisibleAnywhere, Category = "Grapple Options")
 		int constraintIterations = 100;
@@ -52,10 +59,13 @@ protected:
 		float playerCausedTension = 50.0f;
 	UPROPERTY(VisibleAnywhere, Category = "Grapple Options")
 		TArray<URopePoint*> ropePoints;
+	UPROPERTY(VisibleAnywhere, Category = "Grapple Options")
+		USplineComponent* splineComponent;
+	UPROPERTY(VisibleAnywhere, Category = "Grapple Options")
+		TArray<USplineMeshComponent*> ropeMeshes;
 
 	AActor* anchorObject;
 	class UGrappleGun* grappleSource;
-	ULineBatchComponent* lineRenderer;
 	FVector anchorNormal;
 	float realDistanceBetweenPoints;
 	float realStiffness;
@@ -73,7 +83,11 @@ protected:
 
 	FVector anchorObjectPosition;
 	FVector previousAnchorObjectPosition;
+	float ropeTempLength;
 
 	bool anchorIsMovable;
 	FVector anchorObjectImpactOffset;
+
+	UStaticMesh* mesh;
+	class UMaterialInterface* defaultMaterial;
 };

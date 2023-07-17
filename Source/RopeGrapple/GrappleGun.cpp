@@ -55,8 +55,7 @@ void UGrappleGun::PullRopeIn()
 		rope->Shorten(ropeLengthChangeSpeed);
 
 		FVector direction = rope->GetAnchorPoint() - GetRopeOrigin();
-		float distance = direction.Length();
-		if (owningPlayer->GetCharacterMovement()->MovementMode == EMovementMode::MOVE_Walking && distance >= rope->GetLength() / 1.03f) {
+		if (owningPlayer->GetCharacterMovement()->MovementMode == EMovementMode::MOVE_Walking && rope->GreaterThanRopeLength(direction)) {
 			direction.Normalize();
 			if (direction.Z <= zInfluenceRequiredForVertReelIn) owningPlayer->GetCharacterMovement()->AddInputVector(direction * ropeLengthChangeSpeed, true);
 			else {
@@ -87,7 +86,7 @@ void UGrappleGun::SimulateOwningCharacter(float deltaTime)
 		previousGunTipPosition = gunTipPosition;
 		gunTipPosition += velocity + owningPlayerGravity * (deltaTime * deltaTime);
 
-		if (pendingForce.Length() > 0) {
+		if (pendingForce.SquaredLength() > 0) {
 			gunTipPosition += playerSwingInfluence * FVector(pendingForce.X, pendingForce.Y, 0) * (deltaTime * deltaTime);
 			pendingForce = FVector::ZeroVector;
 		}
@@ -108,7 +107,7 @@ void UGrappleGun::RestrainOwningCharacter(URopePoint* endPoint, URopePoint* anch
 	if (!owningPlayer) return;
 
 	FVector ropeOrigin = GetRopeOrigin();
-	if (owningPlayer->GetCharacterMovement()->MovementMode == EMovementMode::MOVE_Falling && (anchorPoint->position - ropeOrigin).Length() > ropeLength) {
+	if (owningPlayer->GetCharacterMovement()->MovementMode == EMovementMode::MOVE_Falling && (anchorPoint->position - ropeOrigin).SquaredLength() > ropeLength * ropeLength) {
 		owningPlayer->GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_Custom);
 		owningPlayer->BeginHanging();
 		hanging = true;
@@ -193,6 +192,7 @@ void UGrappleGun::GenerateRope()
 			else if (anchorObject->Tags.Contains(grapplePullableTag)) rope->SetObjectLocks(anchorObject, this, true);
 			else return; //eventual option for two-way pull objects..
 
+			rope->SetMeshAndMaterial(mesh, defaultMaterial);
 			rope->GeneratePoints(startLocation, endLocation);
 			rope->SetAnchorNormal(hitAnchor.ImpactNormal);
 		}

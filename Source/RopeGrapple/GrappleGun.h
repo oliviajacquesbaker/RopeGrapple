@@ -67,6 +67,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grapple Options")
 		float momentumScale = 50;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple Options")
+		UStaticMesh* mesh;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Grapple Options")
+		class UMaterialInterface* defaultMaterial;
+
+
 protected:
 	virtual void BeginPlay() override;
 	void GenerateRope();
