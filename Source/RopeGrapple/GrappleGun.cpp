@@ -8,6 +8,7 @@ void UGrappleGun::BeginPlay()
 {
 	traceRadiusIncrease = (maxTraceRadius - minTraceRadius) / (traceBreakUps - 1);
 	gunTipPosition = previousGunTipPosition = GetRopeOrigin();
+	SetTickGroup(ETickingGroup::TG_DuringPhysics);
 }
 
 void UGrappleGun::AssignOwningPlayer(ARopeGrappleCharacter* targetCharacter)
@@ -39,7 +40,7 @@ void UGrappleGun::Release()
 
 		if (rope && !rope->IsAnchorMovable()) {
 			owningPlayer->GetCharacterMovement()->ClearAccumulatedForces();
-			owningPlayer->GetCharacterMovement()->AddImpulse((gunTipPosition - previousGunTipPosition) * momentumScale);
+			owningPlayer->GetCharacterMovement()->AddImpulse((gunTipPosition - previousGunTipPosition) * momentumScale / GetWorld()->GetDeltaSeconds());
 			owningPlayer->GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_Falling);
 		}		
 		hanging = false;
@@ -52,17 +53,13 @@ void UGrappleGun::PullRopeIn()
 {
 	if (rope) {
 		if (rope->GetLength() <= minRopeLength) return;
-		rope->Shorten(ropeLengthChangeSpeed);
-
-		FVector direction = rope->GetAnchorPoint() - GetRopeOrigin();
-		if (owningPlayer->GetCharacterMovement()->MovementMode == EMovementMode::MOVE_Walking && rope->GreaterThanRopeLength(direction)) {
-			direction.Normalize();
-			if (direction.Z <= zInfluenceRequiredForVertReelIn) owningPlayer->GetCharacterMovement()->AddInputVector(direction * ropeLengthChangeSpeed, true);
-			else {
-				direction.Z = FMath::Clamp(direction.Z, 0, zInfluenceRequiredForVertReelIn * 1.3f);
-				owningPlayer->GetCharacterMovement()->AddImpulse(direction * ropeLengthChangeSpeed * verticalReelInForceMultiplier);
+		if (rope->Shorten(ropeLengthChangeSpeed)) {
+			FVector direction = rope->GetAnchorPoint() - GetRopeOrigin();
+			if (owningPlayer->GetCharacterMovement()->MovementMode == EMovementMode::MOVE_Walking && rope->GreaterThanRopeLength(direction)) {
+				if (direction.GetSafeNormal().Z <= zInfluenceRequiredForVertReelIn) owningPlayer->GetCharacterMovement()->AddInputVector(direction * ropeLengthChangeSpeed, true);
+				else owningPlayer->GetCharacterMovement()->AddImpulse(FVector::UpVector * ropeLengthChangeSpeed * verticalReelInForceMultiplier);
 			}
-		}
+		}		
 	}
 }
 

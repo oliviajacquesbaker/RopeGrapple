@@ -24,7 +24,7 @@ public:
 	void GenerateLine();
 
 	void Extend(float rateOfChange);
-	void Shorten(float rateOfChange);
+	bool Shorten(float rateOfChange);
 
 	void SetObjectLocks(AActor* anchor, class UGrappleGun* ropeSource, bool anchorCanMove = false) { anchorObject = anchor; grappleSource = ropeSource; anchorIsMovable = anchorCanMove; anchorObjectPosition = previousAnchorObjectPosition = anchorObject->GetActorLocation();}
 	float GetLength() { return ropeLength + transitionaryOutDistance - (realDistanceBetweenPoints - transitionaryInDistance); };
@@ -77,7 +77,7 @@ protected:
 	float transitionaryOutDistance = 0.1f;
 	float transitionaryInDistance = 0.0f;
 	float errorAcceptance = 0.01f;
-	float correctionTraceLength = 200.0f;
+	float correctionTraceLength = 100.0f;
 	float majorityInfluence = 0.75f;
 	float minorityInfluence = 0.4f;
 

@@ -85,6 +85,7 @@ void ARopeGrappleCharacter::BeginPlay()
 	defaultWalkSpeed = GetCharacterMovement()->MaxWalkSpeed;
 	defaultFOV = firstPersonCameraComponent->FieldOfView;
 	respawnLocation = GetActorLocation();
+	SetTickGroup(ETickingGroup::TG_DuringPhysics);
 }
 
 void ARopeGrappleCharacter::SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent)

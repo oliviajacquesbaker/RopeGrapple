@@ -61,7 +61,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grapple Options")
 		float zInfluenceRequiredForVertReelIn = 0.6f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grapple Options")
-		float verticalReelInForceMultiplier = 100.0f;
+		float verticalReelInForceMultiplier = 5.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grapple Options")
 		float playerSwingInfluence = 2700;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grapple Options")
