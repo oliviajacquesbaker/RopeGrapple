@@ -117,21 +117,14 @@ void ARope::ProjectPoints()
 		UKismetSystemLibrary::SphereTraceSingle(GetWorld(), ropePoints[i]->position + (FVector::UpVector * desiredDistanceBetweenPoints / 3),
 			ropePoints[i]->position, ropePoints[i]->radius, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, { this }, 
 			EDrawDebugTrace::None, outHit, true, FLinearColor::Red, FLinearColor::Green, 0);
-		
-		if (outHit.bBlockingHit && outHit.ImpactNormal.Z >= majorityInfluence) {
-			ProjectPoint(i, outHit.ImpactPoint);
-			float angle = FMath::RadiansToDegrees(acosf(FVector::DotProduct(outHit.ImpactNormal, previousNormal)));
-			if (previousNormal != FVector::ZeroVector && angle > 60) {
-				HandleCorner(i - 1, i, previousNormal, outHit.ImpactNormal);
-			}
-			previousNormal = outHit.ImpactNormal;
-		}
-		else if (outHit.bBlockingHit && outHit.ImpactNormal.Z >= (majorityInfluence - 1)) {
-			UKismetSystemLibrary::SphereTraceSingle(GetWorld(), ropePoints[i]->position + (outHit.ImpactNormal * correctionTraceLength), 
-				ropePoints[i]->position, ropePoints[i]->radius, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, { this }, 
+
+		if (outHit.bBlockingHit && outHit.ImpactNormal.Z >= (majorityInfluence - 1)) {
+			if(outHit.ImpactNormal.Z < majorityInfluence) 
+				UKismetSystemLibrary::SphereTraceSingle(GetWorld(), ropePoints[i]->position + (outHit.ImpactNormal * correctionTraceLength),
+				ropePoints[i]->position, ropePoints[i]->radius, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, { this },
 				EDrawDebugTrace::None, outHit, true, FLinearColor::Red, FLinearColor::Green, 0);
 
-			ProjectPoint(i, outHit.ImpactPoint, false);
+			ProjectPoint(i, outHit.ImpactPoint);
 			float angle = FMath::RadiansToDegrees(acosf(FVector::DotProduct(outHit.ImpactNormal, previousNormal)));
 			if (previousNormal != FVector::ZeroVector && angle > 60) {
 				HandleCorner(i - 1, i, previousNormal, outHit.ImpactNormal);
@@ -157,10 +150,8 @@ void ARope::ProjectPoint(int ind, FVector impactPoint, bool groundCollision)
 void ARope::HandleCorner(int indA, int indB, FVector aImpactNormal, FVector bImpactNormal)
 {
 	FVector current = ropePoints[indB]->position;
-	FVector adjust = aImpactNormal;
-
-	FVector goal = current + adjust * realDistanceBetweenPoints * 5;
-	adjust *= 10.0f;
+	FVector adjust = aImpactNormal * 10.0f;
+	FVector goal = current + aImpactNormal * realDistanceBetweenPoints * 5;
 
 	FHitResult outHit;
 	FVector lastHit;
@@ -171,7 +162,7 @@ void ARope::HandleCorner(int indA, int indB, FVector aImpactNormal, FVector bImp
 
 		if (outHit.bBlockingHit) lastHit = outHit.ImpactPoint;
 		else {
-			//DrawDebugSphere(GetWorld(), lastHit, 5, 8, FColor(181, 0, 200), false, 5, 2, 1);
+			DrawDebugSphere(GetWorld(), lastHit, 5, 8, FColor(181, 0, 200), false, 5, 2, 1);
 			int modifiedInd = (FVector::Distance(lastHit, ropePoints[indA]->position) < FVector::Distance(lastHit, ropePoints[indB]->position)) ? indA : indB;
 			ropePoints[modifiedInd]->position = lastHit;
 			ropePoints[modifiedInd]->cornerFlag = true;
