@@ -37,7 +37,6 @@ public:
 	bool GreaterThanRopeLength(FVector comparisonVector) { ropeTempLength = GetLength() * initialGiveMultiplier; return comparisonVector.SquaredLength() >= ropeTempLength * ropeTempLength; };
 	void SetMeshAndMaterial(UStaticMesh* mesh_, UMaterialInterface* material_) { mesh = mesh_; defaultMaterial = material_; };
 
-
 protected:
 	virtual void BeginPlay() override;
 	void RestrainPoints(int iterations);
@@ -80,6 +79,7 @@ protected:
 	float correctionTraceLength = 100.0f;
 	float majorityInfluence = 0.75f;
 	float minorityInfluence = 0.4f;
+	float outlierMultiplier = 10.0f;
 
 	FVector anchorObjectPosition;
 	FVector previousAnchorObjectPosition;

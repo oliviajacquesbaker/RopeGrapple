@@ -6,6 +6,7 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "InputActionValue.h"
+#include "Sound/SoundCue.h"
 #include "GrappleGun.h"
 #include "RopeGrappleCharacter.generated.h"
 
@@ -37,6 +38,13 @@ public:
 	void BeginHanging();
 	void RotateGun(FRotator rot);
 
+	UPROPERTY(EditAnywhere, Category = "SFX")
+		USoundCue* footstepSoundCue;
+	UPROPERTY(EditAnywhere, Category = "SFX")
+		float walkSFXInterval = 0.5;
+	UPROPERTY(EditAnywhere, Category = "SFX")
+		float runSFXInterval = 0.3;
+
 	/** Look Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 		class UInputAction* lookAction;
@@ -67,6 +75,12 @@ protected:
 	void Look(const FInputActionValue& Value);
 	void ToggleSprint();
 	void SetFOV();
+
+	UFUNCTION(BlueprintCallable)
+	void PlayFootstepSound();
+
+	UFUNCTION(BlueprintCallable)
+		void PlayFootstepSoundForced();
 
 	/** Pawn mesh: 1st person view (arms; seen only by self) */
 	UPROPERTY(VisibleDefaultsOnly, Category = Mesh)
@@ -119,5 +133,8 @@ protected:
 
 	bool anchored = false;
 	FVector anchorPoint;
+
+	FTimerHandle footstepSoundHandle;
+	bool footstepsActive = false;
 };
 

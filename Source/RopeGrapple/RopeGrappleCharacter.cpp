@@ -142,6 +142,15 @@ void ARopeGrappleCharacter::Move(const FInputActionValue& value)
 			AddMovementInput(GetActorForwardVector(), movementVector.Y);
 			AddMovementInput(GetActorRightVector(), movementVector.X);
 		}
+
+		if (!footstepsActive && FMath::Abs(movementVector.X + movementVector.Y) > 0.3 && GetCharacterMovement()->MovementMode == EMovementMode::MOVE_Walking) {
+			GetWorld()->GetTimerManager().SetTimer(footstepSoundHandle, this, &ARopeGrappleCharacter::PlayFootstepSound, walkSFXInterval, true, 0.001);
+			footstepsActive = true;
+		}
+		else if (footstepsActive && (FMath::Abs(movementVector.X + movementVector.Y) < 0.3 || GetCharacterMovement()->MovementMode != EMovementMode::MOVE_Walking)) {
+			GetWorld()->GetTimerManager().ClearTimer(footstepSoundHandle);
+			footstepsActive = false;
+		}
 	}
 }
 
@@ -159,8 +168,18 @@ void ARopeGrappleCharacter::Look(const FInputActionValue& value)
 
 void ARopeGrappleCharacter::ToggleSprint()
 {
-	if (sprinting) GetCharacterMovement()->MaxWalkSpeed = defaultWalkSpeed;
-	else GetCharacterMovement()->MaxWalkSpeed = sprintSpeed;
+	if (sprinting) {
+		GetCharacterMovement()->MaxWalkSpeed = defaultWalkSpeed;
+		GetWorld()->GetTimerManager().ClearTimer(footstepSoundHandle);
+		footstepsActive = false;
+	}
+	else {
+		GetCharacterMovement()->MaxWalkSpeed = sprintSpeed;
+		if (footstepsActive) {
+			GetWorld()->GetTimerManager().ClearTimer(footstepSoundHandle);
+			GetWorld()->GetTimerManager().SetTimer(footstepSoundHandle, this, &ARopeGrappleCharacter::PlayFootstepSound, runSFXInterval, true);
+		}
+	}
 
 	sprinting = !sprinting;
 }
@@ -178,4 +197,18 @@ void ARopeGrappleCharacter::SetFOV()
 		float newFOV = defaultFOV + (sprintFOV - defaultFOV) * FOVpercent;
 		firstPersonCameraComponent->FieldOfView = (newFOV - lastFOV > FOVMaxChangePerTick) ? lastFOV + FOVMaxChangePerTick : newFOV;
 	}
+}
+
+void ARopeGrappleCharacter::PlayFootstepSound()
+{
+	if (FMath::Abs(GetCharacterMovement()->Velocity.X + GetCharacterMovement()->Velocity.Y) < 2 || GetCharacterMovement()->MovementMode != EMovementMode::MOVE_Walking) {
+		GetWorld()->GetTimerManager().ClearTimer(footstepSoundHandle);
+		footstepsActive = false;
+	}
+	if (footstepsActive && footstepSoundCue) UGameplayStatics::PlaySoundAtLocation(this, footstepSoundCue, GetActorLocation());
+}
+
+void ARopeGrappleCharacter::PlayFootstepSoundForced()
+{
+	if (footstepSoundCue) UGameplayStatics::PlaySoundAtLocation(this, footstepSoundCue, GetActorLocation());
 }

@@ -34,7 +34,11 @@ public:
 	float GetRopeLength() { return (rope) ? rope->GetLength() : 0.0f; };
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grapple Options")
-		USoundBase* FireSound;
+		USoundBase* fireSound;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grapple Options")
+		USoundClass* fireSoundClass;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grapple Options")
+		USoundMix* fireSoundMix;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grapple Options")
 		UAnimMontage* FireAnimation;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grapple Options")
@@ -67,6 +71,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grapple Options")
 		float momentumScale = 50;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grapple Options")
+		float volumeDropOffScale = 1;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grapple Options")
+		float minimumVolume = 0.4f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grapple Options")
+		float maximumVolume = 1.2f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple Options")
 		UStaticMesh* mesh;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Grapple Options")
@@ -75,10 +86,14 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
-	void GenerateRope();
+
+	UFUNCTION()
+	void GenerateRope(FHitResult hitAnchor);
+	void SearchForRope();
 	FHitResult GetAnchorPoint(FVector startLocation, FVector direction);
-	FVector GetNonCollidingLocation(FVector idealLocation, FVector blockingNormal);
+	FVector GetNonCollidingLocation(FVector idealLocation, FVector blockingNormal, FVector startingLocation);
 	void CheckForLanding();
+	float GetVolumeByDistance(float distance);
 
 	ARopeGrappleCharacter* owningPlayer;
 	ARope* rope;

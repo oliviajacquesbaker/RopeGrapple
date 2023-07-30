@@ -18,17 +18,21 @@ void UGrappleGun::AssignOwningPlayer(ARopeGrappleCharacter* targetCharacter)
 	owningPlayerGravity = FVector(0, 0, owningPlayer->GetCharacterMovement()->GravityScale * 100);
 }
 
+FVector UGrappleGun::GetRopeOrigin()
+{
+	return GetComponentLocation() + GetComponentRotation().RotateVector(MuzzleOffset);
+}
+
 void UGrappleGun::Fire()
 {
 	if (!owningPlayer || !(owningPlayer->GetController())) return;
 
-	if (FireSound) UGameplayStatics::PlaySoundAtLocation(this, FireSound, owningPlayer->GetActorLocation());
 	if (FireAnimation) {
 		UAnimInstance* AnimInstance = owningPlayer->GetMesh1P()->GetAnimInstance();
 		if (AnimInstance) AnimInstance->Montage_Play(FireAnimation, 1.f);
 	}
 
-	GenerateRope();
+	SearchForRope();
 }
 
 void UGrappleGun::Release()
@@ -47,6 +51,64 @@ void UGrappleGun::Release()
 	}
 
 	rope = nullptr;
+	UGameplayStatics::SetSoundMixClassOverride(this, fireSoundMix, fireSoundClass, 1.0f, 1.0, 0.0f);
+	UGameplayStatics::PushSoundMixModifier(this, fireSoundMix);
+}
+
+void UGrappleGun::SearchForRope()
+{
+	APlayerController* owningController = Cast<APlayerController>(owningPlayer->GetController());
+	UCameraComponent* characterCamera = Cast<UCameraComponent>(owningPlayer->GetComponentByClass(UCameraComponent::StaticClass()));
+	if (!owningController || !characterCamera) return;
+
+	FHitResult hitAnchor = GetAnchorPoint(characterCamera->GetComponentLocation(), characterCamera->GetForwardVector());
+	AActor* anchorObject = hitAnchor.GetActor();
+	if (anchorObject) {
+		if (fireSound) UGameplayStatics::PlaySoundAtLocation(this, fireSound, owningPlayer->GetActorLocation());
+		UGameplayStatics::SetSoundMixClassOverride(this, fireSoundMix, fireSoundClass, GetVolumeByDistance((GetComponentLocation() - hitAnchor.ImpactPoint).Length()), 1.0, 0.02f);
+		UGameplayStatics::PushSoundMixModifier(this, fireSoundMix);
+
+		//Generate the rope on a small delay to allow for synchronization of the SFX
+		FTimerHandle handle;
+		FTimerDelegate delegate;
+		delegate.BindUFunction(this, "GenerateRope", hitAnchor);
+		GetWorld()->GetTimerManager().SetTimer(handle, delegate, 0.1, false);
+	}
+}
+
+void UGrappleGun::GenerateRope(FHitResult hitAnchor)
+{
+	AActor* anchorObject = hitAnchor.GetActor();
+	FVector startLocation = GetRopeOrigin();
+	FVector endLocation = hitAnchor.ImpactPoint;
+
+	rope = GetWorld()->SpawnActor<ARope>();
+	if (rope) {
+		if (anchorObject->Tags.Contains(grappleAnchorTag)) {
+			rope->SetObjectLocks(anchorObject, this);
+			if (owningPlayer) owningPlayer->AnchorMovement(endLocation);
+		}
+		else if (anchorObject->Tags.Contains(grapplePullableTag)) rope->SetObjectLocks(anchorObject, this, true);
+		else return; //eventual option for two-way pull objects..
+
+		rope->SetMeshAndMaterial(mesh, defaultMaterial);
+		rope->GeneratePoints(startLocation, endLocation);
+		rope->SetAnchorNormal(hitAnchor.ImpactNormal);
+	}
+}
+
+FHitResult UGrappleGun::GetAnchorPoint(FVector startLocation, FVector direction)
+{
+	FHitResult outHit;
+	float traceRadius = minTraceRadius;
+	for (int i = 0; i < traceBreakUps; ++i) {
+		UKismetSystemLibrary::SphereTraceSingle(GetWorld(), startLocation + (direction * maxRopeLength * i), startLocation + (direction * maxRopeLength * (i + 1)), traceRadius, UEngineTypes::ConvertToTraceType(grappleCollisionChannel), false, {}, EDrawDebugTrace::None, outHit, true, FLinearColor::Red, FLinearColor::Green, 1.0f);
+		if (outHit.bBlockingHit) return outHit;
+
+		traceRadius += traceRadiusIncrease;
+	}
+
+	return outHit;
 }
 
 void UGrappleGun::PullRopeIn()
@@ -69,11 +131,6 @@ void UGrappleGun::LetRopeOut()
 		if (rope->GetLength() >= maxRopeLength) return;
 		rope->Extend(ropeLengthChangeSpeed);
 	}
-}
-
-FVector UGrappleGun::GetRopeOrigin()
-{
-	return GetComponentLocation() + GetComponentRotation().RotateVector(MuzzleOffset);
 }
 
 void UGrappleGun::SimulateOwningCharacter(float deltaTime)
@@ -129,11 +186,11 @@ void UGrappleGun::RestrainOwningCharacter(URopePoint* endPoint, URopePoint* anch
 		//if movement was blocked, use the anchor's direction against the blocking object to project the goal destination out of the collision
 		if (movementBlocked.GetActor()) {
 			FHitResult movementBlockedSecondary;
-			owningPlayer->SetActorLocation(GetNonCollidingLocation(destination, rope->GetAnchorNormal()), true, &movementBlockedSecondary);
+			owningPlayer->SetActorLocation(GetNonCollidingLocation(destination, rope->GetAnchorNormal(), playerLocation), true, &movementBlockedSecondary);
 
 			//if THAT movement was blocked, try again with normal off blocking collider (case where anchor is on horizontal surface)
 			if (movementBlockedSecondary.GetActor()) {
-				owningPlayer->SetActorLocation(GetNonCollidingLocation(destination, movementBlocked.Normal), true, &movementBlockedSecondary);
+				owningPlayer->SetActorLocation(GetNonCollidingLocation(destination, movementBlocked.Normal, playerLocation), true, &movementBlockedSecondary);
 			}
 		}
 
@@ -145,14 +202,17 @@ void UGrappleGun::RestrainOwningCharacter(URopePoint* endPoint, URopePoint* anch
 	}
 }
 
-FVector UGrappleGun::GetNonCollidingLocation(FVector idealLocation, FVector blockingNormal)
+FVector UGrappleGun::GetNonCollidingLocation(FVector idealLocation, FVector blockingNormal, FVector startingLocation)
 {
 	float playerColliderRadius = owningPlayer->GetCapsuleComponent()->GetScaledCapsuleRadius();
 	FVector start = idealLocation + blockingNormal * 3 * playerColliderRadius;
 
 	FHitResult hitActor;
-	UKismetSystemLibrary::SphereTraceSingle(GetWorld(), start, idealLocation, playerColliderRadius, UEngineTypes::ConvertToTraceType(ECollisionChannel::ECC_Visibility), false, { owningPlayer }, EDrawDebugTrace::None, hitActor, true, FLinearColor::Red, FLinearColor::Green, 20.0f);
-	return hitActor.Location + blockingNormal;
+	UKismetSystemLibrary::SphereTraceSingle(GetWorld(), start, idealLocation, playerColliderRadius, 
+		UEngineTypes::ConvertToTraceType(ECollisionChannel::ECC_Visibility), false, { owningPlayer }, EDrawDebugTrace::None, 
+		hitActor, true, FLinearColor::Red, FLinearColor::Green, 20.0f);
+
+	return (hitActor.bBlockingHit) ? hitActor.Location + blockingNormal : startingLocation;
 }
 
 void UGrappleGun::CheckForLanding()
@@ -168,44 +228,8 @@ void UGrappleGun::CheckForLanding()
 	}
 }
 
-void UGrappleGun::GenerateRope()
+float UGrappleGun::GetVolumeByDistance(float distance)
 {
-	APlayerController* owningController = Cast<APlayerController>(owningPlayer->GetController());
-	UCameraComponent* characterCamera = Cast<UCameraComponent>(owningPlayer->GetComponentByClass(UCameraComponent::StaticClass()));
-	if (!owningController || !characterCamera) return;
-
-	FVector startLocation = GetRopeOrigin();
-	FHitResult hitAnchor = GetAnchorPoint(characterCamera->GetComponentLocation(), characterCamera->GetForwardVector());
-	AActor* anchorObject = hitAnchor.GetActor();
-	if (anchorObject) {
-		FVector endLocation = hitAnchor.ImpactPoint;
-
-		rope = GetWorld()->SpawnActor<ARope>();
-		if (rope) {
-			if (anchorObject->Tags.Contains(grappleAnchorTag)) {
-				rope->SetObjectLocks(anchorObject, this);
-				if (owningPlayer) owningPlayer->AnchorMovement(endLocation);
-			}
-			else if (anchorObject->Tags.Contains(grapplePullableTag)) rope->SetObjectLocks(anchorObject, this, true);
-			else return; //eventual option for two-way pull objects..
-
-			rope->SetMeshAndMaterial(mesh, defaultMaterial);
-			rope->GeneratePoints(startLocation, endLocation);
-			rope->SetAnchorNormal(hitAnchor.ImpactNormal);
-		}
-	}
-}
-
-FHitResult UGrappleGun::GetAnchorPoint(FVector startLocation, FVector direction)
-{
-	FHitResult outHit;
-	float traceRadius = minTraceRadius;
-	for (int i = 0; i < traceBreakUps; ++i) {
-		UKismetSystemLibrary::SphereTraceSingle(GetWorld(), startLocation + (direction * maxRopeLength * i), startLocation + (direction * maxRopeLength * (i + 1)), traceRadius, UEngineTypes::ConvertToTraceType(grappleCollisionChannel), false, {}, EDrawDebugTrace::None, outHit, true, FLinearColor::Red, FLinearColor::Green, 1.0f);
-		if (outHit.bBlockingHit) return outHit;
-
-		traceRadius += traceRadiusIncrease;
-	}
-
-	return outHit;
+	float volume = (100 / distance) * (1 / volumeDropOffScale);
+	return FMath::Clamp(volume, minimumVolume, maximumVolume);
 }

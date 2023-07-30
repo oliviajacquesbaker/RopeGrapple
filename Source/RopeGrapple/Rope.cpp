@@ -162,7 +162,7 @@ void ARope::HandleCorner(int indA, int indB, FVector aImpactNormal, FVector bImp
 
 		if (outHit.bBlockingHit) lastHit = outHit.ImpactPoint;
 		else {
-			DrawDebugSphere(GetWorld(), lastHit, 5, 8, FColor(181, 0, 200), false, 5, 2, 1);
+			//DrawDebugSphere(GetWorld(), lastHit, 5, 8, FColor(181, 0, 200), false, 5, 2, 1);
 			int modifiedInd = (FVector::Distance(lastHit, ropePoints[indA]->position) < FVector::Distance(lastHit, ropePoints[indB]->position)) ? indA : indB;
 			ropePoints[modifiedInd]->position = lastHit;
 			ropePoints[modifiedInd]->cornerFlag = true;
